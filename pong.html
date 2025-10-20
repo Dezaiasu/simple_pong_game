@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pong — Simple HTML5 Canvas Game</title>
+<style>
+  :root {
+    --bg1: #0f1020;
+    --bg2: #1a1b3a;
+    --neon: #6cf4ff;
+    --accent: #ff71c6;
+    --text: #eaf6ff;
+    --muted: #9fb3c8;
+  }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: radial-gradient(1200px 600px at 30% 20%, var(--bg2), var(--bg1) 60%);
+    color: var(--text);
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial;
+  }
+
+  .wrap {
+    max-width: 920px;
+    margin: 24px auto;
+    padding: 16px;
+  }
+
+  .card {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 18px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(255,255,255,0.04);
+    overflow: hidden;
+  }
+
+  header {
+    padding: 16px 20px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    background: linear-gradient(90deg, rgba(108,244,255,0.09), rgba(255,113,198,0.09));
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(18px, 3vw, 22px);
+  }
+
+  .controls { display: flex; gap: 8px; }
+  button {
+    background: rgba(255,255,255,0.08);
+    color: var(--text);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px;
+    padding: 8px 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .primary { border-color: var(--neon); box-shadow: 0 0 12px rgba(108,244,255,0.35); }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.25), rgba(0,0,0,0.28));
+  }
+
+  .hud {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px 16px;
+    color: var(--muted);
+  }
+
+  .score { font-size: 24px; font-weight: 700; color: var(--text); }
+  .accent { color: var(--accent); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <header>
+        <h1>Neon <span class="accent">Pong</span></h1>
+        <div class="controls">
+          <button id="startBtn" class="primary">Start / Pause (Space)</button>
+          <button id="resetBtn">Reset (R)</button>
+        </div>
+      </header>
+
+      <canvas id="game" width="900" height="540"></canvas>
+
+      <div class="hud">
+        <div class="score" id="leftScore">0</div>
+        <div>Player vs CPU — first to <span class="accent">7</span> wins</div>
+        <div class="score" id="rightScore">0</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const CONFIG = {
+  width: 900,
+  height: 540,
+  paddle: { w: 14, h: 96, speed: 8 },
+  ball:   { r: 10, speed: 6 },
+  cpu:    { trackSpeed: 6.5, error: 0.12 },
+  winScore: 7,
+};
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const ui = {
+  startBtn: document.getElementById('startBtn'),
+  resetBtn: document.getElementById('resetBtn'),
+  leftScore: document.getElementById('leftScore'),
+  rightScore: document.getElementById('rightScore'),
+};
+
+const state = {
+  running: false,
+  player: { x: 30, y: CONFIG.height/2 - CONFIG.paddle.h/2, score: 0 },
+  cpu:    { x: CONFIG.width - 30 - CONFIG.paddle.w, y: CONFIG.height/2 - CONFIG.paddle.h/2, score: 0 },
+  ball:   { x: CONFIG.width/2, y: CONFIG.height/2, vx: 0, vy: 0 },
+  input:  { up: false, down: false },
+  winner: null
+};
+
+window.addEventListener('keydown', e => {
+  if (e.code === 'KeyW') state.input.up = true;
+  if (e.code === 'KeyS') state.input.down = true;
+  if (e.code === 'Space') toggleRun();
+  if (e.code === 'KeyR') resetGame();
+});
+window.addEventListener('keyup', e => {
+  if (e.code === 'KeyW') state.input.up = false;
+  if (e.code === 'KeyS') state.input.down = false;
+});
+
+ui.startBtn.onclick = toggleRun;
+ui.resetBtn.onclick = resetGame;
+
+function serveBall(toRight = true) {
+  const angle = (Math.random() * 0.6 - 0.3);
+  state.ball.x = CONFIG.width / 2;
+  state.ball.y = CONFIG.height / 2;
+  const speed = CONFIG.ball.speed;
+  state.ball.vx = (toRight ? 1 : -1) * Math.cos(angle) * speed;
+  state.ball.vy = Math.sin(angle) * speed;
+}
+
+function toggleRun() {
+  if (state.winner) resetGame();
+  else {
+    state.running = !state.running;
+    if (state.running && state.ball.vx === 0) serveBall(true);
+  }
+}
+
+function resetGame() {
+  state.running = false;
+  state.winner = null;
+  state.player.score = 0;
+  state.cpu.score = 0;
+  ui.leftScore.textContent = 0;
+  ui.rightScore.textContent = 0;
+  state.ball.x = CONFIG.width / 2;
+  state.ball.y = CONFIG.height / 2;
+  state.ball.vx = 0;
+  state.ball.vy = 0;
+}
+
+function update() {
+  if (!state.running) return;
+
+  const p = state.player, c = state.cpu, b = state.ball;
+
+  if (state.input.up) p.y -= CONFIG.paddle.speed;
+  if (state.input.down) p.y += CONFIG.paddle.speed;
+  p.y = Math.max(0, Math.min(CONFIG.height - CONFIG.paddle.h, p.y));
+
+  const targetY = b.y - CONFIG.paddle.h/2 + (Math.random() - 0.5) * CONFIG.cpu.error * 100;
+  const dir = Math.sign(targetY - c.y);
+  c.y += dir * CONFIG.cpu.trackSpeed;
+  c.y = Math.max(0, Math.min(CONFIG.height - CONFIG.paddle.h, c.y));
+
+  b.x += b.vx;
+  b.y += b.vy;
+
+  if (b.y - b.r < 0 || b.y + b.r > CONFIG.height) b.vy *= -1;
+
+  if (b.x - b.r < p.x + CONFIG.paddle.w && b.y > p.y && b.y < p.y + CONFIG.paddle.h) {
+    b.vx = Math.abs(b.vx);
+  }
+  if (b.x + b.r > c.x && b.y > c.y && b.y < c.y + CONFIG.paddle.h) {
+    b.vx = -Math.abs(b.vx);
+  }
+
+  if (b.x + b.r < 0) { c.score++; ui.rightScore.textContent = c.score; state.running = false; serveBall(true); }
+  if (b.x - b.r > CONFIG.width) { p.score++; ui.leftScore.textContent = p.score; state.running = false; serveBall(false); }
+
+  if (p.score >= CONFIG.winScore) state.winner = 'Player';
+  if (c.score >= CONFIG.winScore) state.winner = 'CPU';
+}
+
+function draw() {
+  ctx.clearRect(0,0,CONFIG.width,CONFIG.height);
+  ctx.fillStyle = 'white';
+  ctx.fillRect(state.player.x, state.player.y, CONFIG.paddle.w, CONFIG.paddle.h);
+  ctx.fillRect(state.cpu.x, state.cpu.y, CONFIG.paddle.w, CONFIG.paddle.h);
+  ctx.beginPath();
+  ctx.arc(state.ball.x, state.ball.y, CONFIG.ball.r, 0, Math.PI*2);
+  ctx.fill();
+
+  if (state.winner) {
+    ctx.font = 'bold 40px Arial';
+    ctx.fillText(`${state.winner} Wins!`, CONFIG.width/2 - 120, CONFIG.height/2);
+  }
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+resetGame();
+loop();
+</script>
+</body>
+</html>
