@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Pong — Simple HTML5 Canvas Game</title>
+<title>Neon Pong — HTML5 Canvas Game</title>
 <style>
   :root {
     --bg1: #0f1020;
@@ -46,10 +46,7 @@
     background: linear-gradient(90deg, rgba(108,244,255,0.09), rgba(255,113,198,0.09));
   }
 
-  h1 {
-    margin: 0;
-    font-size: clamp(18px, 3vw, 22px);
-  }
+  h1 { margin: 0; font-size: clamp(18px, 3vw, 22px); }
 
   .controls { display: flex; gap: 8px; }
   button {
@@ -128,10 +125,20 @@ const state = {
   running: false,
   player: { x: 30, y: CONFIG.height/2 - CONFIG.paddle.h/2, score: 0 },
   cpu:    { x: CONFIG.width - 30 - CONFIG.paddle.w, y: CONFIG.height/2 - CONFIG.paddle.h/2, score: 0 },
-  ball:   { x: CONFIG.width/2, y: CONFIG.height/2, vx: 0, vy: 0 },
+  ball:   { x: CONFIG.width/2, y: CONFIG.height/2, vx: 0, vy: 0, r: CONFIG.ball.r },
   input:  { up: false, down: false },
   winner: null
 };
+
+// small helper functions
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+function collidePx(ball, x, y, w, h) {
+  const cx = clamp(ball.x, x, x + w);
+  const cy = clamp(ball.y, y, y + h);
+  const dx = ball.x - cx;
+  const dy = ball.y - cy;
+  return (dx*dx + dy*dy) <= (ball.r * ball.r);
+}
 
 window.addEventListener('keydown', e => {
   if (e.code === 'KeyW') state.input.up = true;
@@ -182,32 +189,59 @@ function update() {
 
   const p = state.player, c = state.cpu, b = state.ball;
 
-  if (state.input.up) p.y -= CONFIG.paddle.speed;
+  // Player control
+  if (state.input.up)   p.y -= CONFIG.paddle.speed;
   if (state.input.down) p.y += CONFIG.paddle.speed;
-  p.y = Math.max(0, Math.min(CONFIG.height - CONFIG.paddle.h, p.y));
+  p.y = clamp(p.y, 0, CONFIG.height - CONFIG.paddle.h);
 
+  // CPU movement - smooth tracking
   const targetY = b.y - CONFIG.paddle.h/2 + (Math.random() - 0.5) * CONFIG.cpu.error * 100;
-  const dir = Math.sign(targetY - c.y);
-  c.y += dir * CONFIG.cpu.trackSpeed;
-  c.y = Math.max(0, Math.min(CONFIG.height - CONFIG.paddle.h, c.y));
+  const delta = targetY - c.y;
+  const step = Math.sign(delta) * Math.min(CONFIG.cpu.trackSpeed, Math.abs(delta));
+  c.y = clamp(c.y + step, 0, CONFIG.height - CONFIG.paddle.h);
 
+  // Ball movement
   b.x += b.vx;
   b.y += b.vy;
 
-  if (b.y - b.r < 0 || b.y + b.r > CONFIG.height) b.vy *= -1;
+  // Wall collisions
+  if (b.y - b.r <= 0 && b.vy < 0) { b.y = b.r; b.vy *= -1; }
+  if (b.y + b.r >= CONFIG.height && b.vy > 0) { b.y = CONFIG.height - b.r; b.vy *= -1; }
 
-  if (b.x - b.r < p.x + CONFIG.paddle.w && b.y > p.y && b.y < p.y + CONFIG.paddle.h) {
-    b.vx = Math.abs(b.vx);
+  // Paddle collisions
+  if (b.vx < 0 && collidePx(b, p.x, p.y, CONFIG.paddle.w, CONFIG.paddle.h)) {
+    b.x = p.x + CONFIG.paddle.w + b.r;
+    const hit = (b.y - (p.y + CONFIG.paddle.h/2)) / (CONFIG.paddle.h/2);
+    const speed = Math.hypot(b.vx, b.vy) * 1.03;
+    const angle = hit * 0.6;
+    b.vx =  Math.cos(angle) * speed;
+    b.vy =  Math.sin(angle) * speed;
   }
-  if (b.x + b.r > c.x && b.y > c.y && b.y < c.y + CONFIG.paddle.h) {
-    b.vx = -Math.abs(b.vx);
+
+  if (b.vx > 0 && collidePx(b, c.x, c.y, CONFIG.paddle.w, CONFIG.paddle.h)) {
+    b.x = c.x - b.r;
+    const hit = (b.y - (c.y + CONFIG.paddle.h/2)) / (CONFIG.paddle.h/2);
+    const speed = Math.hypot(b.vx, b.vy) * 1.03;
+    const angle = -hit * 0.6;
+    b.vx = -Math.cos(angle) * speed;
+    b.vy =  Math.sin(angle) * speed;
   }
 
-  if (b.x + b.r < 0) { c.score++; ui.rightScore.textContent = c.score; state.running = false; serveBall(true); }
-  if (b.x - b.r > CONFIG.width) { p.score++; ui.leftScore.textContent = p.score; state.running = false; serveBall(false); }
+  // Scoring
+  if (b.x + b.r < 0) {
+    state.cpu.score++;
+    ui.rightScore.textContent = state.cpu.score;
+    state.running = false;
+    serveBall(true);
+  } else if (b.x - b.r > CONFIG.width) {
+    state.player.score++;
+    ui.leftScore.textContent = state.player.score;
+    state.running = false;
+    serveBall(false);
+  }
 
-  if (p.score >= CONFIG.winScore) state.winner = 'Player';
-  if (c.score >= CONFIG.winScore) state.winner = 'CPU';
+  if (state.player.score >= CONFIG.winScore) state.winner = 'Player';
+  if (state.cpu.score >= CONFIG.winScore) state.winner = 'CPU';
 }
 
 function draw() {
